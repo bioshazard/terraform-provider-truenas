@@ -6,6 +6,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.5.12] - 2026-10-13
+
+### Fixed
+- `truenas_zvol`: creating a zvol and a resource that consumes its device in
+  the same apply — an `truenas_iscsi_extent` (`disk = zvol/<name>`), an
+  `truenas_nvmet_namespace`, or a VM DISK device — no longer fails with
+  "Device '/dev/zvol/...' does not exist". `pool.dataset.create` returns before
+  udev has created the zvol's device node, and under parallel creation that lag
+  can be several seconds; zvol create now waits for the node to appear before
+  returning, so dependents find it. (#40)
+- The API client now reconnects before sending when its WebSocket has dropped,
+  instead of failing a call with "not connected". Combined with a new keepalive
+  (below), a connection that went idle no longer surfaces a transient error on
+  the next operation.
+
+### Changed
+- The API client sends a periodic keepalive so TrueNAS does not close an idle
+  session (observed after ~45-60s with no traffic). Long applies with quiet
+  stretches — slow plans, think-time between resources — keep a live connection
+  rather than reconnecting on the next call.
+
+### Testing
+- Added a parallel zvol + iSCSI extent acceptance test (the reporter's
+  `for_each` shape) and a unit test for the device-settle wait; made the
+  acceptance-test client retry rate-limited logins as the provider already
+  does, so back-to-back runs no longer trip TrueNAS's login cap.
+
 ## [1.5.11] - 2026-10-06
 
 ### Fixed
