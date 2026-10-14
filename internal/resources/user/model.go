@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -350,8 +351,31 @@ func (m *UserModel) createPayload(ctx context.Context) (map[string]any, diag.Dia
 }
 
 // updatePayload omits uid and username (immutable after create).
-func (m *UserModel) updatePayload(ctx context.Context) (map[string]any, diag.Diagnostics) {
-	return m.basePayload(ctx)
+// updatePayload builds the user.update payload as the DIFF against prior state:
+// only fields whose value changed are sent. TrueNAS validates several fields on
+// every user.update and rejects some unchanged values on constrained/builtin
+// accounts — the reserved administrator rejects both its non-/mnt `home`
+// ("Path must start with /mnt/") and its immutable `group` ("cannot be
+// changed") even when re-sent identical, which would otherwise block any other
+// change to the account. Diffing the plan payload against the prior payload
+// drops every unchanged field generically, so no hand-maintained field list can
+// fall out of sync and silently reintroduce the bug for a newly-added field.
+//
+// uid and username are already absent (basePayload omits them). Write-only
+// password / home_mode are kept because prior state carries them null, so they
+// never compare equal. Read (responseToModel) refreshes every field, so
+// out-of-band drift still surfaces as a plan diff and is re-sent — the diff is
+// taken against the refreshed prior state, not against config. (#43)
+func (m *UserModel) updatePayload(ctx context.Context, prior UserModel) (map[string]any, diag.Diagnostics) {
+	p, diags := m.basePayload(ctx)
+	priorPayload, pdiags := prior.basePayload(ctx)
+	diags.Append(pdiags...)
+	for k, v := range p {
+		if pv, ok := priorPayload[k]; ok && reflect.DeepEqual(v, pv) {
+			delete(p, k)
+		}
+	}
+	return p, diags
 }
 
 func (m *UserModel) basePayload(ctx context.Context) (map[string]any, diag.Diagnostics) {

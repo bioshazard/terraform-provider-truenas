@@ -222,67 +222,88 @@ func TestUserCreatePayload_HomeModeAndWebshare(t *testing.T) {
 func TestUserUpdatePayload(t *testing.T) {
 	ctx := context.Background()
 
-	m := UserModel{
+	// Diff-only: only changed fields are sent. prior is the refreshed state;
+	// plan changes full_name, locked and sshpubkey and leaves the rest alone.
+	prior := UserModel{
 		UID:                  types.Int64Value(1234),
 		Username:             types.StringValue("testuser"),
-		FullName:             types.StringValue("Updated Name"),
-		Email:                types.StringValue(""),
-		Home:                 types.StringValue("/home/testuser"),
+		FullName:             types.StringValue("Old Name"),
+		Email:                types.StringValue("old@example.com"),
+		Home:                 types.StringValue("/mnt/tank/home"),
 		Shell:                types.StringValue("/bin/bash"),
 		Locked:               types.BoolValue(false),
 		PasswordDisabled:     types.BoolValue(false),
 		SMB:                  types.BoolValue(false),
 		SSHPasswordEnabled:   types.BoolValue(false),
-		SSHPubKey:            types.StringValue(""),
+		SSHPubKey:            types.StringValue("oldkey"),
 		SudoCommands:         types.ListNull(types.StringType),
 		SudoCommandsNoPasswd: types.ListNull(types.StringType),
 		Groups:               types.ListNull(types.Int64Type),
+		Group:                types.Int64Value(1234),
 		Password:             types.StringNull(),
-		Builtin:              types.BoolValue(false),
-		Immutable:            types.BoolValue(false),
-		Local:                types.BoolValue(true),
 	}
+	m := prior
+	m.FullName = types.StringValue("Updated Name")
+	m.Locked = types.BoolValue(true)
+	m.SSHPubKey = types.StringValue("") // clear the key
 
-	payload, diags := m.updatePayload(ctx)
+	payload, diags := m.updatePayload(ctx, prior)
 	if diags.HasError() {
 		t.Fatalf("updatePayload returned errors: %v", diags)
 	}
 
-	// uid and username must NOT be in update payload.
-	if _, ok := payload["uid"]; ok {
-		t.Error("updatePayload must not contain 'uid'")
+	// Changed fields are present (with their payload transforms).
+	if payload["full_name"] != "Updated Name" {
+		t.Errorf("full_name = %v, want Updated Name", payload["full_name"])
 	}
-	if _, ok := payload["username"]; ok {
-		t.Error("updatePayload must not contain 'username'")
+	if payload["locked"] != true {
+		t.Errorf("locked = %v, want true", payload["locked"])
 	}
+	if v, ok := payload["sshpubkey"]; !ok || v != nil {
+		t.Errorf("sshpubkey = %v (present=%v), want nil (empty string clears)", v, ok)
+	}
+	// Unchanged fields are omitted.
+	for _, k := range []string{"email", "home", "shell", "password_disabled", "smb", "ssh_password_enabled", "sudo_commands", "groups", "group"} {
+		if _, ok := payload[k]; ok {
+			t.Errorf("unchanged field %q must be omitted, got %v", k, payload[k])
+		}
+	}
+	// uid, username and (null) password are never in an update payload.
+	for _, k := range []string{"uid", "username", "password"} {
+		if _, ok := payload[k]; ok {
+			t.Errorf("update payload must not contain %q", k)
+		}
+	}
+}
 
-	// password must NOT be included when null.
-	if _, ok := payload["password"]; ok {
-		t.Error("updatePayload must not contain 'password' when it is null")
+// TestUserUpdatePayload_ReservedAdmin is the #43 regression, grounded in a live
+// probe: the reserved administrator rejects both its non-/mnt `home` and its
+// immutable `group` when re-sent unchanged. Diff-only must omit BOTH (and every
+// other unchanged field) while still sending a genuine change.
+func TestUserUpdatePayload_ReservedAdmin(t *testing.T) {
+	ctx := context.Background()
+	prior := UserModel{
+		Username:         types.StringValue("truenas_admin"),
+		Home:             types.StringValue("/home/truenas_admin"),
+		Group:            types.Int64Value(950),
+		Shell:            types.StringValue("/usr/bin/zsh"),
+		Locked:           types.BoolValue(false),
+		PasswordDisabled: types.BoolValue(false),
 	}
+	plan := prior
+	plan.FullName = types.StringValue("Local Administrator (edited)")
 
-	// email should be nil when empty string.
-	if v, ok := payload["email"]; !ok {
-		t.Error("updatePayload missing 'email'")
-	} else if v != nil {
-		t.Errorf("payload[email] = %v, want nil for empty string", v)
+	p, diags := plan.updatePayload(ctx, prior)
+	if diags.HasError() {
+		t.Fatalf("updatePayload: %v", diags)
 	}
-
-	// Null lists should produce empty slices, not nil.
-	sudoCmds, ok := payload["sudo_commands"].([]string)
-	if !ok {
-		t.Fatalf("payload[sudo_commands] is %T, want []string", payload["sudo_commands"])
+	if p["full_name"] != "Local Administrator (edited)" {
+		t.Errorf("full_name = %v, want the edited name", p["full_name"])
 	}
-	if sudoCmds == nil {
-		t.Error("payload[sudo_commands] must not be nil")
-	}
-
-	groups, ok := payload["groups"].([]int64)
-	if !ok {
-		t.Fatalf("payload[groups] is %T, want []int64", payload["groups"])
-	}
-	if groups == nil {
-		t.Error("payload[groups] must not be nil")
+	for _, k := range []string{"home", "group", "shell", "locked", "password_disabled"} {
+		if _, ok := p[k]; ok {
+			t.Errorf("unchanged %q must be omitted (TrueNAS rejects unchanged home/group on the reserved admin), got %v", k, p[k])
+		}
 	}
 }
 
@@ -386,7 +407,7 @@ func TestUserUpdatePayload_GroupIncluded(t *testing.T) {
 		GroupCreate:          types.BoolValue(true), // must never leak into update
 	}
 
-	payload, diags := m.updatePayload(ctx)
+	payload, diags := m.updatePayload(ctx, UserModel{})
 	if diags.HasError() {
 		t.Fatalf("updatePayload returned errors: %v", diags)
 	}
