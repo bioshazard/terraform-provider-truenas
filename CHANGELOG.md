@@ -6,6 +6,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.5.14] - 2026-10-15
+
+### Fixed
+- `truenas_user`: updating a user no longer clears its secondary groups when
+  `groups` is left unmanaged (omitted from config). The v1.5.13 partial-update
+  change compared coerced payload values, so an unknown `groups` became an
+  explicit empty-list removal — on an imported administrator this stripped
+  `builtin_administrators` and broke its API key. The update now diffs at the
+  model level: a null/unknown field is never sent; an explicitly configured
+  empty list still is. (regression from #43)
+- `truenas_app_registry`: creating a registry with `uri = "https://ghcr.io"` no
+  longer fails with "inconsistent result after apply". TrueNAS canonicalizes the
+  URI with a trailing slash (`https://ghcr.io/`); the configured value is now
+  kept when it differs only by that slash. (#47)
+- `truenas_docker_config`: configuring an imported Docker instance with a
+  changed or empty `pool` no longer fails with "inconsistent result after
+  apply". The computed `dataset` is now re-planned when the pool changes and
+  preserved when it does not (no perpetual diff). (#46)
+
 ## [1.5.13] - 2026-10-14
 
 ### Fixed

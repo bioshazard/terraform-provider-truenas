@@ -7,8 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -368,11 +368,36 @@ func (m *UserModel) createPayload(ctx context.Context) (map[string]any, diag.Dia
 // taken against the refreshed prior state, not against config. (#43)
 func (m *UserModel) updatePayload(ctx context.Context, prior UserModel) (map[string]any, diag.Diagnostics) {
 	p, diags := m.basePayload(ctx)
-	priorPayload, pdiags := prior.basePayload(ctx)
-	diags.Append(pdiags...)
-	for k, v := range p {
-		if pv, ok := priorPayload[k]; ok && reflect.DeepEqual(v, pv) {
-			delete(p, k)
+	// Drop each field whose PLAN value is unknown, null, or unchanged from prior
+	// state. This is compared at the MODEL level, not on basePayload's output:
+	// basePayload coerces an unknown/null field to a zero value ([] / "" / false),
+	// so a payload-level diff would read an unmanaged `groups` as an explicit
+	// empty-list removal and wipe the account's groups (incl builtin_administrators
+	// on an imported admin — the v1.5.13 regression). An EXPLICITLY configured
+	// empty value is a known, non-null value, so it is NOT dropped here and is
+	// still sent as a real change. uid/username are absent (basePayload omits
+	// them); write-only password/home_mode are not in this map, so they always
+	// ride along when configured. Read refreshes every field, so out-of-band
+	// drift still surfaces as a plan diff and is re-sent. (#43)
+	for key, pair := range map[string][2]attr.Value{
+		"full_name":              {m.FullName, prior.FullName},
+		"email":                  {m.Email, prior.Email},
+		"home":                   {m.Home, prior.Home},
+		"shell":                  {m.Shell, prior.Shell},
+		"locked":                 {m.Locked, prior.Locked},
+		"password_disabled":      {m.PasswordDisabled, prior.PasswordDisabled},
+		"smb":                    {m.SMB, prior.SMB},
+		"webshare":               {m.Webshare, prior.Webshare},
+		"ssh_password_enabled":   {m.SSHPasswordEnabled, prior.SSHPasswordEnabled},
+		"sshpubkey":              {m.SSHPubKey, prior.SSHPubKey},
+		"sudo_commands":          {m.SudoCommands, prior.SudoCommands},
+		"sudo_commands_nopasswd": {m.SudoCommandsNoPasswd, prior.SudoCommandsNoPasswd},
+		"groups":                 {m.Groups, prior.Groups},
+		"group":                  {m.Group, prior.Group},
+	} {
+		plan := pair[0]
+		if plan.IsNull() || plan.IsUnknown() || plan.Equal(pair[1]) {
+			delete(p, key)
 		}
 	}
 	return p, diags

@@ -307,6 +307,74 @@ func TestUserUpdatePayload_ReservedAdmin(t *testing.T) {
 	}
 }
 
+// TestUserUpdatePayload_UnknownGroupsNotWiped is the v1.5.13 regression: an
+// unmanaged (unknown) groups attribute must NOT be sent on update. basePayload
+// coerces unknown -> [], and sending [] would clear the account's groups
+// (including builtin_administrators on an imported admin, breaking its API key).
+// An EXPLICITLY configured empty list is a real removal and IS sent.
+func TestUserUpdatePayload_UnknownGroupsNotWiped(t *testing.T) {
+	ctx := context.Background()
+	prior := UserModel{
+		Home:   types.StringValue("/home/truenas_admin"),
+		Groups: types.ListValueMust(types.Int64Type, []attr.Value{types.Int64Value(40), types.Int64Value(544)}),
+	}
+
+	// Unknown groups (unset Optional+Computed): must be omitted, not wiped.
+	plan := prior
+	plan.FullName = types.StringValue("Edited")
+	plan.Groups = types.ListUnknown(types.Int64Type)
+	p, diags := plan.updatePayload(ctx, prior)
+	if diags.HasError() {
+		t.Fatal(diags)
+	}
+	if _, ok := p["groups"]; ok {
+		t.Errorf("unknown groups must be omitted, got %#v (would wipe groups)", p["groups"])
+	}
+	if p["full_name"] != "Edited" {
+		t.Errorf("the real change (full_name) must still be sent, got %v", p["full_name"])
+	}
+
+	// Explicitly configured empty list: a real removal, must be sent.
+	plan2 := prior
+	plan2.Groups = types.ListValueMust(types.Int64Type, []attr.Value{})
+	p2, _ := plan2.updatePayload(ctx, prior)
+	if g, ok := p2["groups"].([]int64); !ok || len(g) != 0 {
+		t.Errorf("explicit empty groups must be sent as [], got %#v", p2["groups"])
+	}
+}
+
+// TestUserUpdatePayload_UnchangedOmitsEverything guards the diff map against
+// drift: when plan == prior, every mutable field is unchanged and must be
+// omitted. A field added to basePayload but missing from updatePayload's map
+// would remain here and fail this test.
+func TestUserUpdatePayload_UnchangedOmitsEverything(t *testing.T) {
+	m := UserModel{
+		FullName: types.StringValue("A"), Email: types.StringValue("a@b.c"),
+		Home: types.StringValue("/mnt/h"), Shell: types.StringValue("/bin/sh"),
+		Locked: types.BoolValue(true), PasswordDisabled: types.BoolValue(true),
+		SMB: types.BoolValue(false), Webshare: types.BoolValue(false),
+		SSHPasswordEnabled:   types.BoolValue(false),
+		SSHPubKey:            types.StringValue("k"),
+		SudoCommands:         types.ListValueMust(types.StringType, []attr.Value{types.StringValue("ALL")}),
+		SudoCommandsNoPasswd: types.ListValueMust(types.StringType, []attr.Value{}),
+		Groups:               types.ListValueMust(types.Int64Type, []attr.Value{types.Int64Value(40)}),
+		Group:                types.Int64Value(950),
+		Password:             types.StringNull(),
+		HomeMode:             types.StringNull(),
+	}
+	p, diags := m.updatePayload(context.Background(), m)
+	if diags.HasError() {
+		t.Fatal(diags)
+	}
+	if len(p) != 0 {
+		keys := make([]string, 0, len(p))
+		for k := range p {
+			keys = append(keys, k)
+		}
+		t.Errorf("unchanged update must omit all fields; these were not covered by the diff map: %v", keys)
+	}
+}
+
 // TestUserCreatePayload_GroupCreate verifies that createPayload includes
 // group_create when set, and omits it (and 'group') when neither is set.
 func TestUserCreatePayload_GroupCreate(t *testing.T) {
