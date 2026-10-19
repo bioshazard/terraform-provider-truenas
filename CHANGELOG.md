@@ -6,6 +6,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.5.16] - 2026-10-19
+
+### Added
+- `truenas_network_interface`: a PHYSICAL interface can now be managed, not just
+  imported. It still cannot be created or deleted (the hardware exists
+  independently of Terraform), but once imported its IP configuration
+  (`ipv4_dhcp`, `ipv6_auto`, `aliases`, `mtu`, `description`) is updated like any
+  other interface. Setting a BRIDGE/LINK_AGGREGATION/VLAN-only field on a
+  PHYSICAL interface is rejected at plan time.
+
+### Changed
+- Security vulnerability reports now go to psirt@truenas.com (SECURITY.md).
+
 ## [1.5.15] - 2026-10-19
 
 ### Fixed
