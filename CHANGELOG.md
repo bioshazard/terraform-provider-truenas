@@ -6,6 +6,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.5.15] - 2026-10-19
+
+### Fixed
+- `truenas_ipmi_lan`: a DHCP channel whose `ip_address_source` is reported as
+  `use_dhcp` (TrueNAS 28.0) was misread as static, so managing it failed with
+  "inconsistent result after apply" and every plan wanted to change it. DHCP is
+  now recognized from any `ip_address_source` containing `dhcp` (covers `dhcp`,
+  `DHCP`, `use_dhcp`), while `static` and `unspecified` remain non-DHCP.
+
+### Added
+- `truenas_certificate`: `store_privatekey` (default `true`). A generated CSR's
+  private key is kept in state by default (unchanged behavior). Set it `false`
+  when the CSR only feeds an on-box ACME certificate (via `csr_id`) and the key
+  never needs to leave TrueNAS: the key stays on the box (`privatekey_path` is
+  still set) and `privatekey` is null in state, on refresh, and on import. A
+  null value reads as `true`, so upgrades show no diff; changing the value
+  replaces the certificate; `false` is rejected for the imported create types.
+  (#49)
+- Write-only secret rotation. A write-only attribute is absent from the plan, so
+  a rotated secret produced no diff and needed `terraform apply -replace`. A
+  companion `<secret>_wo_version` integer now lets a bumped value drive an
+  ordinary in-place update that re-sends the secret:
+  `truenas_user.password`, `truenas_mail.pass`, `truenas_ipmi_lan.password`,
+  `truenas_iscsi_auth.secret`/`peersecret`, `truenas_vmware.password`,
+  `truenas_ups_config.monpwd`. These version fields are Optional, so existing
+  configurations keep working unchanged. (#48)
+
+### Changed
+- `truenas_app_registry`: the registry credential is now the write-only
+  `password_wo` with a required `password_wo_version`, replacing `password`, so a
+  rotated token re-sends on an ordinary apply instead of `-replace`. **Breaking:**
+  rename `password` to `password_wo` and add `password_wo_version`. (#48)
+
 ## [1.5.14] - 2026-10-15
 
 ### Fixed

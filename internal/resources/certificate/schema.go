@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
@@ -108,6 +109,26 @@ func resourceSchema() schema.Schema {
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"store_privatekey": schema.BoolAttribute{
+				Optional:  true,
+				Computed:  true,
+				Default:   booldefault.StaticBool(true),
+				Sensitive: false,
+				Description: "Whether a generated CSR's private key is read into Terraform state. Defaults to " +
+					"true, matching prior behavior: the key is stored in state (and saved plans) as the " +
+					"deliverable for installing the eventually-signed certificate elsewhere. Set to false when the " +
+					"CSR exists only to feed an on-box CERTIFICATE_CREATE_ACME certificate (via csr_id) and the key " +
+					"never needs to leave TrueNAS: the key then stays on the box (privatekey_path is still set) and " +
+					"\"privatekey\" is null in state, on refresh, and on import. Only valid for the generated CSR " +
+					"create type (CERTIFICATE_CREATE_CSR); setting false for CERTIFICATE_CREATE_IMPORTED or " +
+					"CERTIFICATE_CREATE_IMPORTED_CSR is rejected, since the key is your own configuration input " +
+					"there. A null value (state written before this attribute existed, or an import) reads as true, " +
+					"so upgrading shows no diff. Changing this value replaces the certificate. Immutable.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+					boolplanmodifier.RequiresReplace(),
 				},
 			},
 			"csr": schema.StringAttribute{

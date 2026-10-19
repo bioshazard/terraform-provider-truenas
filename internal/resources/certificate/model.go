@@ -39,6 +39,7 @@ type CertificateModel struct {
 	RenewDays          types.Int64  `tfsdk:"renew_days"`
 	Certificate        types.String `tfsdk:"certificate"`
 	Privatekey         types.String `tfsdk:"privatekey"`
+	StorePrivatekey    types.Bool   `tfsdk:"store_privatekey"`
 	CSR                types.String `tfsdk:"csr"`
 	KeyType            types.String `tfsdk:"key_type"`
 	KeyLength          types.Int64  `tfsdk:"key_length"`
@@ -300,11 +301,18 @@ func responseToModel(ctx context.Context, api *certificateAPI, m *CertificateMod
 	m.RenewDays = types.Int64PointerValue(api.RenewDays)
 	m.Certificate = types.StringPointerValue(api.Certificate)
 	// ACME certificates are generated and fully managed by TrueNAS and are
-	// referenced by id, so the private key is not persisted to state. CSR is
-	// deliberately NOT included: its generated key is the deliverable the user
-	// needs to install the eventually-signed certificate elsewhere, so it is
-	// kept (Sensitive). Imported keys are the user's own input and kept. (#37b)
-	if m.CreateType.ValueString() == "CERTIFICATE_CREATE_ACME" {
+	// referenced by id, so the private key is not persisted to state. A
+	// generated CSR's key is kept (Sensitive) by default, because it is the
+	// deliverable the user needs to install the eventually-signed certificate
+	// elsewhere (#37b). When store_privatekey is set false — valid only for the
+	// generated CSR create types; ValidateConfig rejects it for the imported
+	// ones — that key stays on the box (privatekey_path is still set) and is
+	// never read into state, on create, refresh, or import. store_privatekey
+	// defaults to true, and a null/unknown value (older state, or an import that
+	// carried no value) reads as true, so existing certificates are unaffected.
+	// Imported keys are the user's own input and always kept. (#49)
+	storeKey := m.StorePrivatekey.IsNull() || m.StorePrivatekey.IsUnknown() || m.StorePrivatekey.ValueBool()
+	if m.CreateType.ValueString() == CreateTypeACME || !storeKey {
 		m.Privatekey = types.StringNull()
 	} else {
 		m.Privatekey = types.StringPointerValue(api.Privatekey)
@@ -410,6 +418,18 @@ const (
 	CreateTypeImportedCSR = "CERTIFICATE_CREATE_IMPORTED_CSR"
 	CreateTypeACME        = "CERTIFICATE_CREATE_ACME"
 )
+
+// storePrivatekeyFalseRejected reports whether a store_privatekey = false
+// request is invalid for the given create_type. false is only meaningful for a
+// server-generated CSR (CERTIFICATE_CREATE_CSR); the imported create types
+// carry the private key in configuration, so keeping it out of state is
+// rejected. A null/unknown or true value is always allowed. (#49)
+func storePrivatekeyFalseRejected(createType string, storePrivatekey types.Bool) bool {
+	if storePrivatekey.IsNull() || storePrivatekey.IsUnknown() || storePrivatekey.ValueBool() {
+		return false
+	}
+	return createType == CreateTypeImported || createType == CreateTypeImportedCSR
+}
 
 // preflight validates the create_type-specific required fields client-side,
 // ahead of the certificate.create call, so misconfigurations surface as a

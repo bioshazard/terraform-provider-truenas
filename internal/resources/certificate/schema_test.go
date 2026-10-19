@@ -46,6 +46,36 @@ func TestSchema_IDComputedUseStateForUnknown(t *testing.T) {
 	}
 }
 
+// TestSchema_StorePrivatekey verifies the #49 store_privatekey attribute is an
+// Optional+Computed bool (Default true, filled by the framework), is NOT
+// WriteOnly (it is a plain behavior flag, not a secret), and carries plan
+// modifiers (UseStateForUnknown so an upgrade from state that predates the
+// attribute shows no diff, and RequiresReplace since the key cannot be added to
+// or removed from an existing certificate in place).
+func TestSchema_StorePrivatekey(t *testing.T) {
+	s := resourceSchema()
+
+	attr, ok := s.Attributes["store_privatekey"].(schema.BoolAttribute)
+	if !ok {
+		t.Fatalf("'store_privatekey' attribute is %T, want schema.BoolAttribute", s.Attributes["store_privatekey"])
+	}
+	if !attr.IsOptional() {
+		t.Error("'store_privatekey' should be Optional")
+	}
+	if !attr.IsComputed() {
+		t.Error("'store_privatekey' should be Computed (has a default of true)")
+	}
+	if attr.IsWriteOnly() {
+		t.Error("'store_privatekey' must NOT be WriteOnly (it is a behavior flag, not a secret)")
+	}
+	if attr.Default == nil {
+		t.Error("'store_privatekey' should have a default (true)")
+	}
+	if len(attr.PlanModifiers) == 0 {
+		t.Error("'store_privatekey' should have plan modifiers (UseStateForUnknown + RequiresReplace)")
+	}
+}
+
 // TestSchema_CreateTypeRequiresReplace verifies "create_type" carries
 // RequiresReplace, since certificate.update never accepts it (probed live).
 func TestSchema_CreateTypeRequiresReplace(t *testing.T) {
