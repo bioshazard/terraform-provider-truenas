@@ -739,3 +739,54 @@ func TestResponseToModel_PasswordWOVersionPreserved(t *testing.T) {
 		t.Errorf("PasswordWOVersion = %v, want 5", m.PasswordWOVersion)
 	}
 }
+
+// TestUserCreatePayload_OmitsUnsetOptionals is the #53 regression: Optional
+// attributes left unset (unknown in the plan on create) must NOT be sent to
+// user.create as zero values — TrueNAS rejects an empty "home" ("String should
+// have at least 1 character") and should apply its own defaults. An explicitly
+// configured value (even false) is still sent.
+func TestUserCreatePayload_OmitsUnsetOptionals(t *testing.T) {
+	ctx := context.Background()
+
+	m := UserModel{
+		Username:             types.StringValue("testuser"),
+		UID:                  types.Int64Unknown(),
+		FullName:             types.StringUnknown(),
+		Email:                types.StringUnknown(),
+		Home:                 types.StringUnknown(), // the #53 case
+		Shell:                types.StringUnknown(),
+		Locked:               types.BoolUnknown(),
+		PasswordDisabled:     types.BoolUnknown(),
+		SMB:                  types.BoolValue(false), // explicitly set -> kept
+		Webshare:             types.BoolUnknown(),
+		SSHPasswordEnabled:   types.BoolUnknown(),
+		SSHPubKey:            types.StringUnknown(),
+		SudoCommands:         types.ListUnknown(types.StringType),
+		SudoCommandsNoPasswd: types.ListUnknown(types.StringType),
+		Groups:               types.ListUnknown(types.Int64Type),
+		Group:                types.Int64Unknown(),
+		Password:             types.StringValue("secret123"),
+	}
+
+	payload, diags := m.createPayload(ctx)
+	if diags.HasError() {
+		t.Fatalf("createPayload returned errors: %v", diags)
+	}
+
+	// The bug: unset optionals must be absent, not sent as "" / zero.
+	for _, key := range []string{"home", "shell", "full_name", "email", "locked", "webshare", "groups", "group", "uid"} {
+		if _, ok := payload[key]; ok {
+			t.Errorf("createPayload includes unset optional %q = %v; it must be omitted so TrueNAS applies its default", key, payload[key])
+		}
+	}
+	// Required + explicitly-set values must still be present.
+	if payload["username"] != "testuser" {
+		t.Errorf("payload[username] = %v, want testuser", payload["username"])
+	}
+	if v, ok := payload["smb"]; !ok || v != false {
+		t.Errorf("payload[smb] = %v (present=%v), want explicit false to be kept", v, ok)
+	}
+	if payload["password"] != "secret123" {
+		t.Errorf("payload[password] = %v, want secret123", payload["password"])
+	}
+}

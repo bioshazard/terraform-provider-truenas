@@ -6,6 +6,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.5.18] - 2026-10-22
+
+### Fixed
+- `truenas_user`: creating a user without `home` (or any other unset optional
+  attribute) no longer fails with `user_create.home: String should have at
+  least 1 character`. `createPayload` now omits optional attributes left unset
+  in the plan — as `updatePayload` already did — so TrueNAS applies its own
+  defaults (e.g. `home` = `/var/empty`) instead of receiving a coerced empty
+  value. (#53)
+
 ## [1.5.17] - 2026-10-21
 
 ### Security
