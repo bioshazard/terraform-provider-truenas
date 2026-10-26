@@ -6,7 +6,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [1.5.18] - 2026-10-22
+## [1.5.19] - 2026-10-26
+
+### Fixed
+- `truenas_keychain_ssh_connection` / `truenas_keychain_ssh_keypair`: reading a
+  credential with a session that lacks the `KEYCHAIN_CREDENTIAL` write role
+  (e.g. a Readonly Admin API key) no longer crashes with `cannot unmarshal
+  string into ... attributes`. TrueNAS redacts the whole `attributes` object to
+  `"********"` for such sessions; the provider now detects that and fails with a
+  clear diagnostic naming the role it needs, across the resource, data source,
+  and list. (#57)
+- `truenas_keychain_ssh_connection`: leaving `port`, `username`, or
+  `connect_timeout` unset now applies the documented defaults (22, "root", 10)
+  instead of creating the credential with `port: 0` / `connect_timeout: 0` /
+  empty username, which broke SSH replication. The attributes now carry real
+  schema defaults; existing connections stuck at 0 are healed to the defaults
+  on the next apply. (#56)
+
+### Added
+- Three Terraform actions for one-off steps within an apply (Terraform 1.14+):
+  - `truenas_cronjob_run` — run a cron job now (`cronjob.run`, a job); a
+    disabled job runs too unless `skip_disabled = true`. Handy for a
+    never-scheduled job that performs a one-off command (e.g. fetch a file).
+  - `truenas_vm_start` — start a VM (`vm.start`); no-op when already running, so
+    it is safe to trigger after each `truenas_vm_device` is created.
+  - `truenas_vm_stop` — stop a VM (`vm.stop`, a job); no-op when already
+    stopped, for a `before_destroy` trigger that stops the VM before its
+    devices are removed.
+  (#54)
 
 ### Fixed
 - `truenas_user`: creating a user without `home` (or any other unset optional
