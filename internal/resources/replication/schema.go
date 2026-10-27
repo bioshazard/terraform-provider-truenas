@@ -53,7 +53,7 @@ func resourceSchema() schema.Schema {
 				Validators: []validator.String{stringvalidator.OneOf("LOCAL", "SSH", "SSH+NETCAT")},
 				Default:    stringdefault.StaticString("LOCAL"),
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+					replaceIfTransportChanged(),
 				},
 			},
 			"ssh_credentials": schema.Int64Attribute{

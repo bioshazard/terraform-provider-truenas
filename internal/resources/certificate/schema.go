@@ -125,10 +125,11 @@ func resourceSchema() schema.Schema {
 					"create type (CERTIFICATE_CREATE_CSR); setting false for CERTIFICATE_CREATE_IMPORTED or " +
 					"CERTIFICATE_CREATE_IMPORTED_CSR is rejected, since the key is your own configuration input " +
 					"there. A null value (state written before this attribute existed, or an import) reads as true, " +
-					"so upgrading shows no diff. Changing this value replaces the certificate. Immutable.",
+					"so upgrading records true in place rather than replacing the certificate. Changing the " +
+					"effective value (true<->false, or null->false) replaces it. Immutable.",
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
-					boolplanmodifier.RequiresReplace(),
+					replaceIfStorePrivatekeyChanged(),
 				},
 			},
 			"csr": schema.StringAttribute{

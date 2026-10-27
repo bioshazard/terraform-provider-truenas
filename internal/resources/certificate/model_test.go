@@ -568,3 +568,27 @@ func TestPrivatekeyNullForGeneratedTypes(t *testing.T) {
 		}
 	}
 }
+
+// TestStoresPrivatekey covers the shared "unset reads as true" helper that the
+// read path, the create-type validation, and the replace-if-changed plan
+// modifier all rely on. Null (state written before the attribute existed) and
+// unknown must read as true, so an upgrade is not seen as a change. (#49, PR #59)
+func TestStoresPrivatekey(t *testing.T) {
+	cases := []struct {
+		name string
+		v    types.Bool
+		want bool
+	}{
+		{"null reads as true (upgrade case)", types.BoolNull(), true},
+		{"unknown reads as true", types.BoolUnknown(), true},
+		{"explicit true", types.BoolValue(true), true},
+		{"explicit false", types.BoolValue(false), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := storesPrivatekey(tc.v); got != tc.want {
+				t.Errorf("storesPrivatekey(%s) = %v, want %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}

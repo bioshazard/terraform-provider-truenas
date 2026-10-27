@@ -6,7 +6,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [1.5.19] - 2026-10-26
+## [1.5.20] - 2026-10-27
+
+### Fixed
+- `truenas_certificate`: upgrading from a provider before `store_privatekey`
+  (< 1.5.15) no longer plans to replace every certificate. The attribute's
+  default (`true`) plus an unconditional `RequiresReplace` treated the
+  pre-upgrade `null` as a change (`null -> true`), forcing a destroy/recreate —
+  and, for a CSR, of the ACME certificate chained to it; with `prevent_destroy`
+  the plan failed outright. Replacement now compares *effective* values (unset
+  reads as the default `true`), so an upgrade records `true` in place. A real
+  change (`true`<->`false`, or `null`->`false`) still replaces, since the key
+  can't be added to or removed from an existing certificate. (regression from #49)
+- `truenas_replication_task`: `transport` carried the same latent trap — a
+  default (`LOCAL`) plus an unconditional `RequiresReplace`. It was not an
+  active upgrade regression (the attribute has existed since the resource
+  shipped, so no released version wrote a `null`), but a hand-edited or
+  otherwise `null` `transport` state would have forced a destroy/recreate of
+  the replication task. Replacement now compares *effective* values (unset
+  reads as the default `LOCAL`); a real transport change still replaces, since
+  the API can't change a task's transport in place.
 
 ### Fixed
 - `truenas_keychain_ssh_connection` / `truenas_keychain_ssh_keypair`: reading a
