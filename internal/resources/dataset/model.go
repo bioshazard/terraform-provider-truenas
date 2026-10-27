@@ -267,3 +267,24 @@ func injectEncryptionSecrets(payload map[string]any, cfg *DatasetModel) {
 		payload["encryption_options"] = eo
 	}
 }
+
+// changedUpdateAPIPayload preserves the native source of unchanged quota fields.
+// Computed quota attributes read an unset/default limit as zero. Sending that
+// zero on an unrelated update makes the default a LOCAL property. Compare the
+// prior state instead of treating every known planned value as an instruction.
+func (m *DatasetModel) changedUpdateAPIPayload(prior DatasetModel) map[string]any {
+	p := m.updateAPIPayload()
+	for _, field := range []struct {
+		name           string
+		planned, prior types.Int64
+	}{
+		{"quota", m.Quota, prior.Quota},
+		{"refquota", m.RefQuota, prior.RefQuota},
+		{"reservation", m.Reservation, prior.Reservation},
+	} {
+		if field.planned.Equal(field.prior) {
+			delete(p, field.name)
+		}
+	}
+	return p
+}

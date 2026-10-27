@@ -171,7 +171,12 @@ func (r *DatasetResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	payload := plan.updateAPIPayload()
+	var prior DatasetModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	payload := plan.changedUpdateAPIPayload(prior)
 
 	_, err := r.client.Call(ctx, "pool.dataset.update", plan.Name.ValueString(), payload)
 	if err != nil {
