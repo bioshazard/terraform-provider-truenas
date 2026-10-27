@@ -27,6 +27,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   reads as the default `LOCAL`); a real transport change still replaces, since
   the API can't change a task's transport in place.
 
+## [1.5.19] - 2026-10-26
+
 ### Fixed
 - `truenas_keychain_ssh_connection` / `truenas_keychain_ssh_keypair`: reading a
   credential with a session that lacks the `KEYCHAIN_CREDENTIAL` write role
@@ -53,6 +55,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     stopped, for a `before_destroy` trigger that stops the VM before its
     devices are removed.
   (#54)
+
+## [1.5.18] - 2026-10-22
 
 ### Fixed
 - `truenas_user`: creating a user without `home` (or any other unset optional
